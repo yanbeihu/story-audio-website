@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Story to Audio Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold text-center mb-8 text-gray-800">Story to Audio Converter</h1>
+        
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <label for="storyInput" class="block text-lg font-medium text-gray-700 mb-2">Enter your story:</label>
+            <textarea 
+                id="storyInput" 
+                rows="10" 
+                class="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Paste your story here... Characters will be automatically detected from dialogue patterns like 'Character Name: Dialogue text'"></textarea>
+            
+            <div class="mt-4 flex space-x-4">
+                <button 
+                    id="analyzeBtn" 
+                    class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-md transition duration-200"
+                    onclick="analyzeStory()">
+                    Analyze Characters
+                </button>
+                <button 
+                    id="generateBtn" 
+                    class="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-6 rounded-md transition duration-200 disabled:opacity-50"
+                    onclick="generateAudio()" 
+                    disabled>
+                    Generate Audio
+                </button>
+            </div>
+        </div>
+
+        <div id="charactersSection" class="hidden bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Detected Characters</h2>
+            <div id="charactersList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        </div>
+
+        <div id="audioSection" class="hidden bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Generated Audio</h2>
+            <div class="flex items-center space-x-4">
+                <audio id="audioPlayer" controls class="w-full"></audio>
+                <a id="downloadLink" 
+                   class="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-md transition duration-200"
+                   download>
+                    Download
+                </a>
+            </div>
+        </div>
+
+        <div id="loadingIndicator" class="hidden text-center mt-4">
+            <div class="loading"></div>
+            <p class="mt-2 text-gray-600">Processing... This may take a moment</p>
+        </div>
+    </div>
+
+    <script>
+        let detectedCharacters = [];
+        
+        async function analyzeStory() {
+            const story = document.getElementById('storyInput').value;
+            if (!story.trim()) {
+                alert('Please enter a story first');
+                return;
+            }
+            
+            showLoading();
+            try {
+                const response = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ story })
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    detectedCharacters = data.characters;
+                    displayCharacters(data.characters);
+                    document.getElementById('generateBtn').disabled = false;
+                } else {
+                    alert('Error analyzing story: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to analyze story. Please try again.');
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        function displayCharacters(characters) {
+            const container = document.getElementById('charactersList');
+            container.innerHTML = '';
+            
+            if (characters.length === 0) {
+                container.innerHTML = '<p class="text-gray-600 col-span-full">No characters detected. Try using dialogue format like "Character Name: Dialogue"</p>';
+            } else {
+                characters.forEach(char => {
+                    const div = document.createElement('div');
+                    div.className = 'bg-blue-50 p-3 rounded-md border border-blue-200';
+                    div.textContent = char;
+                    container.appendChild(div);
+                });
+            }
+            
+            document.getElementById('charactersSection').classList.remove('hidden');
+        }
+        
+        async function generateAudio() {
+            const story = document.getElementById('storyInput').value;
+            if (!story.trim()) {
+                alert('Please enter a story first');
+                return;
+            }
+            
+            showLoading();
+            try {
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        story, 
+                        characters: detectedCharacters 
+                    })
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    const audioPlayer = document.getElementById('audioPlayer');
+                    const downloadLink = document.getElementById('downloadLink');
+                    
+                    // Update with new audio
+                    const timestamp = new Date().getTime();
+                    audioPlayer.src = data.audioUrl + '?t=' + timestamp;
+                    downloadLink.href = data.audioUrl;
+                    
+                    document.getElementById('audioSection').classList.remove('hidden');
+                } else {
+                    alert('Error generating audio: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to generate audio. Please try again.');
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        function showLoading() {
+            document.getElementById('loadingIndicator').classList.remove('hidden');
+            document.getElementById('analyzeBtn').disabled = true;
+            document.getElementById('generateBtn').disabled = true;
+        }
+        
+        function hideLoading() {
+            document.getElementById('loadingIndicator').classList.add('hidden');
+            document.getElementById('analyzeBtn').disabled = false;
+            // Only re-enable generate if characters were detected
+            document.getElementById('generateBtn').disabled = detectedCharacters.length === 0;
+        }
+    </script>
+</body>
+</html>

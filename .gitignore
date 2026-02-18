@@ -1,0 +1,5 @@
+node_modules/
+.env
+audio/
+npm-debug.log*
+.DS_Store
